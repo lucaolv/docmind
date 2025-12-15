@@ -1,5 +1,27 @@
-import { google } from '@ai-sdk/google';
+import { createGroq } from '@ai-sdk/groq';
+import { HfInference } from '@huggingface/inference';
 
-export const chatModel = google('gemini-1.5-flash');
+const groq = createGroq({
+  apiKey: process.env.GROQ_API_KEY,
+});
 
-export const embeddingModel = google.textEmbeddingModel('text-embedding-004');
+const hf = new HfInference(process.env.HUGGINGFACE_API_KEY);
+
+export const chatModel = groq('llama-3.3-70b-versatile');
+
+// Para embeddings, usamos HuggingFace
+export const embeddingModel = {
+  getEmbedding: async (text: string): Promise<number[]> => {
+    try {
+      const embedding = await hf.featureExtraction({
+        model: 'sentence-transformers/all-mpnet-base-v2',
+        inputs: text,
+      });
+
+      return embedding as number[];
+    } catch (error) {
+      console.error('Error getting embedding:', error);
+      throw error;
+    }
+  },
+};
