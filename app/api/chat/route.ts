@@ -8,7 +8,7 @@ export async function POST(req: Request) {
   try {
     const { messages: originalMessages }: { messages: any[] } = await req.json();
 
-    // Normalização das mensagens (Mantida igual)
+    // Normalização das mensagens
     const messages: any[] = originalMessages.map(message => {
       if (message.parts && Array.isArray(message.parts)) {
         const textContent = message.parts
@@ -25,7 +25,7 @@ export async function POST(req: Request) {
 
     const lastMessage = messages[messages.length - 1];
 
-    // Bypass se não for user (Mantido)
+    // Bypass se não for user
     if (!lastMessage || lastMessage.role !== 'user' || typeof lastMessage.content !== 'string') {
       const result = await streamText({
         model: chatModel,
@@ -66,7 +66,7 @@ export async function POST(req: Request) {
     console.log(`📚 Contexto final montado (tamanho): ${context.length} caracteres.`);
 
     // 3. Prompt Ajustado para Debug
-    // Mudamos para PROIBIR conhecimento externo se houver contexto, para testar se ele lê o PDF.
+    // PROIBIR conhecimento externo se houver contexto, para testar se ele lê o PDF.
     const systemPrompt = context
       ? `
       Você é o DocMind, um assistente técnico especializado.
@@ -97,7 +97,6 @@ export async function POST(req: Request) {
 
   } catch (error: any) {
     console.error('Erro na rota de chat:', error);
-    // ... (restante do tratamento de erro mantido)
     return new Response(JSON.stringify({ error: 'Erro interno' }), { status: 500 });
   }
 }

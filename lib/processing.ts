@@ -1,14 +1,11 @@
-// Use 'require' para a versão 1.1.1 do pdf-parse
 const pdf = require('pdf-parse');
 
 export async function parsePDF(buffer: Buffer): Promise<string> {
-  // A versão 1.1.1 retorna um objeto onde .text é o conteúdo
   const data = await pdf(buffer);
   return data.text;
 }
 
 export function chunkText(text: string, chunkSize: number = 1000, overlap: number = 200): string[] {
-  // Remove espaços excessivos
   const cleanText = text.replace(/\s+/g, ' ').trim();
 
   const chunks: string[] = [];
