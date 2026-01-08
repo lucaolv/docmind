@@ -25,18 +25,20 @@ export async function POST(req: Request) {
 
     const lastMessage = messages[messages.length - 1];
 
-    // Se não for mensagem do usuário, apenas responde (bypass do RAG)
+    // Bypass se não for user
     if (!lastMessage || lastMessage.role !== 'user' || typeof lastMessage.content !== 'string') {
       const result = await streamText({
         model: chatModel,
         messages,
-        maxRetries: 0, // Importante: Não tenta de novo se falhar na cota
+        maxRetries: 0,
       });
       return result.toTextStreamResponse();
     }
 
     // --- RAG FLOW ---
-    // 1. Gera o Embedding da pergunta usando Groq
+    console.log(`🔍 Buscando contexto para: "${lastMessage.content}"`);
+
+    // 1. Gera Embedding
     const embedding = await embeddingModel.getEmbedding(lastMessage.content);
 
     // 2. Busca no Pinecone
@@ -47,33 +49,43 @@ export async function POST(req: Request) {
       includeMetadata: true,
     });
 
-    const context = queryResponse.matches
-      .filter((match) => match.score && match.score > 0.6)
+    console.log(`📄 Encontrados ${queryResponse.matches.length} matches.`);
+
+    if (queryResponse.matches.length > 0) {
+      console.log(`   Top score: ${queryResponse.matches[0].score}`);
+      console.log(`   Trecho: ${queryResponse.matches[0].metadata?.text?.slice(0, 100)}...`);
+    }
+
+    // Filtro mais permissivo (ou remova o filter completamente para testar)
+    const relevantMatches = queryResponse.matches.filter((match) => match.score && match.score > 0.25);
+
+    const context = relevantMatches
       .map((match) => match.metadata?.text)
       .join('\n\n---\n\n');
 
-    // Se tem contexto, usa RAG. Se não, responde normalmente
+    console.log(`📚 Contexto final montado (tamanho): ${context.length} caracteres.`);
+
+    // 3. Prompt Ajustado para Debug
+    // PROIBIR conhecimento externo se houver contexto, para testar se ele lê o PDF.
     const systemPrompt = context
       ? `
-      Você é um assistente de IA especializado chamado DocMind.
-      Sua principal função é responder a perguntas com base em um contexto fornecido.
-      Seja conciso, preciso e direto ao ponto.
+      Você é o DocMind, um assistente técnico especializado.
       
-      Responda à pergunta do usuário utilizando o seguinte contexto.
-      Se a resposta não estiver no contexto, você pode usar seu conhecimento geral.
+      ⚠️ REGRA CRÍTICA: Responda APENAS com base no contexto abaixo. 
+      NÃO use seu conhecimento prévio sobre tecnologias genéricas (como MongoDB, AWS, etc) se não estiver no texto.
+      Se a resposta não estiver no contexto, diga: "Desculpe, essa informação não consta na documentação carregada."
 
-      CONTEXTO:
+      CONTEXTO DO PDF:
       """
       ${context}
       """
     `
       : `
-      Você é um assistente de IA especializado chamado DocMind.
-      Responda perguntas de forma concisa, precisa e útil.
-      Seja amigável e direto ao ponto.
+      Você é o DocMind. Não encontrei informações relevantes na documentação sobre esse tema.
+      Diga ao usuário que não encontrou a resposta no manual.
     `;
 
-    // 4. Gera a resposta final
+    // 4. Gera resposta
     const result = await streamText({
       model: chatModel,
       system: systemPrompt,
@@ -85,14 +97,6 @@ export async function POST(req: Request) {
 
   } catch (error: any) {
     console.error('Erro na rota de chat:', error);
-
-    if (error.status === 429 || error.message?.includes('429')) {
-      return new Response("O sistema está sobrecarregado (Muitas requisições). Aguarde alguns segundos.", { status: 429 });
-    }
-
-    return new Response(JSON.stringify({ error: 'Erro interno no servidor.' }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return new Response(JSON.stringify({ error: 'Erro interno' }), { status: 500 });
   }
 }
